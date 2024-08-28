@@ -10,7 +10,7 @@ import {
   validateAndAuthorize,
 } from "../../utils/validateAndAuthorize";
 import { TransactionService } from "../../services/transaction";
-import { ItemService } from "../../services/itemService";
+import { ItemService } from "../../services/item";
 
 export class TransactionController {
   @tryCatch()
