@@ -9,12 +9,18 @@ import Transaction from "./transaction.model";
 dotenv.config();
 
 const connectionInfo = {
-  database: "tecmed-inventory",
-  username: "root",
-  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME || "tecmed-inventory",
+  username: process.env.DB_USER || "root",
+  password: process.env.DB_PASSWORD || "",
   dialectOptions: {
-    host: "localhost",
-    port: "3306",
+    host: process.env.DB_HOST || "localhost",
+    port: process.env.DB_PORT || "3306",
+  },
+  pool: {
+    max: parseInt(process.env.DB_POOL_MAX) || 10, // Máximo de conexões simultâneas
+    min: parseInt(process.env.DB_POOL_MIN) || 0, // Mínimo de conexões
+    acquire: parseInt(process.env.DB_ACQUIRE_TIMEOUT) || 10000, // Tempo máximo em milissegundos para adquirir uma conexão
+    idle: parseInt(process.env.DB_IDLE_TIMEOUT) || 3000, // Tempo que a conexão pode ficar ociosa antes de ser liberada
   },
 };
 
