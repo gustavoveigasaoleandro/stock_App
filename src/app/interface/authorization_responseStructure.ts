@@ -1,6 +1,6 @@
 export interface ResponseStructure {
-  token: string;
   valid: boolean;
+  userId: number;
   role: string | null;
   companyId: string | null;
 }
