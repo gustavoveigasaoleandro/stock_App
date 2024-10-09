@@ -34,6 +34,10 @@ class Transaction extends Model {
 
   @AllowNull(false)
   @Column
+  cost: number;
+
+  @AllowNull(false)
+  @Column
   date: Date;
 
   @BelongsTo(() => Item, "item_id")
