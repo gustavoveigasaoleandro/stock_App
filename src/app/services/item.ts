@@ -14,6 +14,10 @@ export class ItemService {
   }
 
   static async updateItem(existingItem: any, itemData: any, transaction: any) {
-    return await existingItem.update(itemData, { transaction });
+    try {
+      await existingItem.update(itemData, { transaction });
+    } catch (e) {
+      console.log(e);
+    }
   }
 }
