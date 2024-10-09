@@ -16,13 +16,14 @@ export class RabbitMQService {
       try {
         this.connection = await amqp.connect({
           protocol: "amqp",
-          hostname: "localhost", // ou o endereço IP do servidor RabbitMQ
-          port: 5672, // Porta padrão do RabbitMQ
-          username: "gustavo", // Usuário criado
-          password: "123", // Senha do usuário
-          vhost: "/", // Virtual host (por padrão é '/')
+          hostname: process.env.RABBITMQ_HOST || "localhost", // Endereço do servidor RabbitMQ, padrão é localhost
+          port: process.env.RABBITMQ_PORT
+            ? parseInt(process.env.RABBITMQ_PORT)
+            : 5672, // Porta padrão do RabbitMQ
+          username: process.env.RABBITMQ_USER || "guest", // Usuário do RabbitMQ, padrão é guest
+          password: process.env.RABBITMQ_PASSWORD || "guest", // Senha do RabbitMQ, padrão é guest
+          vhost: process.env.RABBITMQ_VHOST || "/", // Virtual host, padrão é '/'
         });
-
         this.channel = await this.connection.createChannel();
         console.log("RabbitMQ Channel and Connection Initialized");
       } catch (error) {
@@ -140,53 +141,126 @@ export class RabbitMQService {
     correlationId: string,
     isListening: { value: boolean }
   ): Promise<any> {
-    if (!this.channel) {
-      console.error("Canal não está inicializado.");
-      return;
+    if (!this.connection) {
+      console.error("Conexão RabbitMQ não inicializada.");
+      throw new Error("Conexão RabbitMQ não inicializada.");
     }
 
+    const channel = await this.connection.createChannel(); // Cria um novo canal
+
     return new Promise(async (resolve, reject) => {
-      const interval = 100; // Intervalo de tempo (em milissegundos) entre cada tentativa de obtenção da mensagem
-      const checkMessage = async () => {
-        if (!isListening.value) {
-          return; // Interrompe o loop se a escuta foi cancelada
+      // Função de callback para processar mensagens
+      const onMessage = async (msg: any) => {
+        console.log("message: ", msg);
+
+        const consumerTag = msg.fields.consumerTag;
+
+        if (!isListening.value || !consumerTag) {
+          return; // Interrompe se a escuta foi cancelada ou se o consumerTag não foi inicializado
         }
 
-        try {
-          const msg = await this.channel.get(queueName, { noAck: false });
+        const msgCorrelationId = msg.properties.correlationId;
+        console.log(
+          "Id esperado:",
+          correlationId,
+          "Id recebido:",
+          msgCorrelationId
+        );
 
-          if (msg) {
-            const msgCorrelationId = msg.properties.correlationId;
+        if (msgCorrelationId === correlationId) {
+          const response = JSON.parse(msg.content.toString());
+          try {
+            console.log("Confirmando mensagem (ack)...");
+            await channel.ack(msg); // Confirma o processamento da mensagem correta
+            console.log("Mensagem confirmada (ack).");
 
-            if (!msgCorrelationId) {
-              console.log(
-                "Mensagem sem correlationId encontrada. Ignorando..."
-              );
-              this.channel.nack(msg, false, false); // Não reencaminha a mensagem à fila
-            } else if (msgCorrelationId === correlationId) {
-              const response = JSON.parse(msg.content.toString());
-              this.channel.ack(msg); // Confirma o processamento da mensagem
-              resolve(response);
-              return; // Finaliza o loop ao encontrar a mensagem correta
-            } else {
-              console.log(
-                "CorrelationId não corresponde. Continuando a ouvir..."
-              );
-              this.channel.nack(msg, false, true); // Reinsere a mensagem na fila
+            // Cancela o consumo após receber a resposta correta
+            if (consumerTag) {
+              console.log("Cancelando consumo com consumerTag:", consumerTag);
+              await channel.cancel(consumerTag);
+              console.log("Consumo cancelado após a resposta.");
             }
-          }
 
-          // Aguarda um pequeno intervalo antes de tentar novamente
-          if (isListening.value) {
-            setTimeout(checkMessage, interval);
+            isListening.value = false;
+
+            // Fecha o canal após garantir que tudo foi processado
+            setTimeout(async () => {
+              try {
+                console.log("Fechando canal...");
+                await channel.close(); // Fecha o canal após garantir que tudo foi processado
+                console.log("Canal fechado após consumo.");
+              } catch (closeError) {
+                console.error("Erro ao fechar o canal:", closeError);
+              }
+            }, 500); // Adiciona um tempo de espera antes de fechar o canal
+
+            resolve(response); // Retorna a resposta
+          } catch (ackError) {
+            console.error("Erro ao confirmar a mensagem (ack):", ackError);
+            reject(ackError);
           }
-        } catch (error) {
-          console.log(error);
-          reject(error);
+        } else {
+          try {
+            console.log("CorrelationId não corresponde, descartando mensagem.");
+            await channel.nack(msg, false, true); // Reinsere a mensagem na fila
+            console.log("Mensagem rejeitada (nack) e reintroduzida na fila.");
+          } catch (nackError) {
+            console.error("Erro ao realizar o nack:", nackError);
+          }
         }
       };
 
-      checkMessage(); // Inicia a verificação das mensagens
+      try {
+        console.log(`Iniciando consumo da fila: ${queueName}`);
+        await channel.consume(queueName, onMessage, {
+          noAck: false, // Exige confirmação manual
+        });
+      } catch (error) {
+        console.error("Erro ao consumir mensagens da fila:", error);
+        try {
+          await channel.close(); // Garante que o canal seja fechado em caso de erro
+        } catch (closeError) {
+          console.error(
+            "Erro ao fechar o canal após falha no consumo:",
+            closeError
+          );
+        }
+        reject(error);
+      }
     });
+  }
+
+  public async consume(
+    queueName: string,
+    dispatchFunction: (err: any, message: any) => Promise<void>
+  ) {
+    await this.initializeRabbitMQ(); // Certifica que o canal está inicializado
+
+    try {
+      console.log(`Ouvindo mensagens na fila "${queueName}"...`);
+
+      // Usando o método `consume` do RabbitMQ, que é mais eficiente para processamento contínuo de mensagens
+      this.channel.consume(
+        queueName,
+        async (message) => {
+          if (message) {
+            try {
+              const messageContent = JSON.parse(message.content.toString());
+              await dispatchFunction(messageContent, message.properties);
+              this.channel.ack(message); // Confirma a mensagem após o processamento
+            } catch (err) {
+              console.error("Erro ao processar a mensagem:", err);
+              dispatchFunction(err, null);
+              this.channel.nack(message, false, false); // Não confirma a mensagem e descarta
+            }
+          }
+        },
+        {
+          noAck: false, // Exige confirmação manual para garantir que a mensagem foi processada
+        }
+      );
+    } catch (error) {
+      console.error("Erro ao consumir mensagens da fila:", error);
+    }
   }
 }

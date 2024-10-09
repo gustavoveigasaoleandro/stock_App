@@ -1,4 +1,4 @@
-import { RabbitMQService } from ".";
+/*import { RabbitMQService } from ".";
 
 // Função para iniciar o RabbitMQ e configurar exchanges, filas e bindings
 export async function startApp() {
@@ -7,8 +7,8 @@ export async function startApp() {
   try {
     // Configura as exchanges
     await rabbitMQService.createExchange("authorization.response_stock_dlx");
-    await rabbitMQService.createExchange("authorization.ex");
-    await rabbitMQService.createExchange("authorization.response_ex");
+   
+    
 
     // Configura as filas com Dead Letter Exchange (DLX) se aplicável
     await rabbitMQService.createQueue(
@@ -34,4 +34,4 @@ export async function startApp() {
   } catch (error) {
     console.error("Error during RabbitMQ setup:", error);
   }
-}
+}*/
