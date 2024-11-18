@@ -104,8 +104,9 @@ export class TransactionController {
       await TransactionService.createTransaction(
         {
           companie_id: access.companyId,
-          type: false, // false para entrada
-          amount: transactionValue,
+          amount: req.body.amount,
+          cost: transactionValue,
+          type: false,
           item_id: existingItem.dataValues.item_id,
           date: new Date(),
         },
@@ -185,7 +186,8 @@ export class TransactionController {
         {
           companie_id: access.companyId,
           type: true, // true para saída
-          amount: transactionValue,
+          amount: req.body.amount,
+          cost: transactionValue,
           item_id: existingItem.dataValues.item_id,
           date: new Date(),
         },
